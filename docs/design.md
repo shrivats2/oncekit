@@ -131,6 +131,41 @@ key becomes `failed` and `onDeadLetter` fires once. Dead-lettered keys are
 immediately — so a poison message can't burn your workers in a hot loop. You
 decide when to `retryKey`, after a fix or a human looks at it.
 
+## Choosing a store, and why not just Redis
+
+The store is pluggable because there is no single right answer — there is a
+speed↔durability curve, and different workloads sit at different points.
+
+First, calibrate: **the store is rarely the bottleneck.** A claim plus a finalize
+is two single-key indexed operations, ~1–4ms on Postgres with a round trip. The
+effect you wrap is usually 10–500ms. Optimizing the store before the store is
+your limit is optimizing the wrong thing.
+
+**Postgres is the right default.** You likely already run it, it survives the
+crash it's meant to recover from, and it's the only option that reaches genuine
+exactly-once (Level 2 above: finalize in the same transaction as a DB effect).
+
+**Redis is faster, and a clean fit for the claim primitive** — `SET NX PX` (or,
+here, a Lua script) is reserve-with-lease in one atomic command, and the key TTL
+*is* the lease. Reach for it at high throughput (tens of thousands of dedup
+ops/sec) with idempotent or non-transactional effects. But two caveats decide
+whether it's correct:
+
+1. **It must not behave like a cache.** A cache evicts under memory pressure by
+   design. If it evicts your `done` record, the next redelivery re-runs the
+   effect — a double charge, not a cache miss. Run Redis with no key eviction on
+   these keys; a pure cache (memcached) is the wrong tool outright.
+2. **Memory-first means weaker durability.** Default persistence can lose the
+   last seconds of writes on a crash — again, lost dedup state means a re-run.
+   `appendfsync always` closes the window but spends most of the speed you came
+   for. And Redis can't do a transactional finalize with a SQL effect, so you're
+   at effectively-once, not exactly-once.
+
+`RedisStore` mitigates growth by giving `done` records a retention TTL (the
+provider's redelivery window), which doubles as automatic cleanup — one thing
+Postgres still needs a sweeper for. That's the trade in miniature: Redis buys
+speed and self-expiry; Postgres buys durability and transactional correctness.
+
 ## Why oncekit stores keys, not payloads
 
 oncekit persists keys, statuses, results, and errors — never your original

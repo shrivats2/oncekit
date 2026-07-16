@@ -13,6 +13,10 @@
     "./postgres": {
       "types": "./dist/stores/postgres.d.ts",
       "import": "./dist/stores/postgres.js"
+    },
+    "./redis": {
+      "types": "./dist/stores/redis.d.ts",
+      "import": "./dist/stores/redis.js"
     }
   },
   "files": [
@@ -59,14 +63,19 @@
   "devDependencies": {
     "@types/node": "^20.14.0",
     "@types/pg": "^8.20.0",
+    "ioredis": "^5.4.0",
     "pg": "^8.22.0",
     "typescript": "^5.5.0",
     "vitest": "^4.1.10"
   },
   "peerDependencies": {
+    "ioredis": "^5.0.0",
     "pg": "^8.0.0"
   },
   "peerDependenciesMeta": {
+    "ioredis": {
+      "optional": true
+    },
     "pg": {
       "optional": true
     }
